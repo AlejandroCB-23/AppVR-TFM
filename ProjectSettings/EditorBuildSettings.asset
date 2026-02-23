@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1045 &1
+EditorBuildSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/Menu.unity
+    guid: cd30bcabed0174447b2ee354d59b2ee5
+  - enabled: 1
+    path: Assets/Scenes/ModoTest.unity
+    guid: 9fc0d4010bbf28b4594072e72b8655ab
+  - enabled: 1
+    path: Assets/Scenes/ModoAleatorio.unity
+    guid: 870204b028ecd684db5b8623b3168767
+  m_configObjects:
+    com.htc.upm.wave.xrsdk.xrsettings: {fileID: 11400000, guid: c778aeaa1cd0cb344a449c02c992ab43, type: 2}
+    com.unity.input.settings.actions: {fileID: -944628639613478452, guid: cdbdd7278fdc8504fb7a4fab0d8db030, type: 3}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 75d1c879b2a65894bb53d2275e04c30d, type: 2}

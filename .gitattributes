@@ -1,0 +1,6 @@
+# Fuerza LF para todos los archivos de texto
+* text=auto eol=lf
+
+# Excepciones (archivos binarios)
+*.png binary
+*.jpg binary
