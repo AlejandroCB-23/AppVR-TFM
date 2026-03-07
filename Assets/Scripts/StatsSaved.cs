@@ -125,27 +125,22 @@ public class StatsSaved: MonoBehaviour
             return;
 
         bool hitCollider = Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity);
+        float currentTime = Time.time - recordingStartTime;
 
         if (hitCollider)
         {
-            string stimulusName = hit.collider.gameObject.name;
+            // --- CASO 1: IMPACTO CON OBJETO ---
+            string stimulusName = hit.collider.transform.parent != null ? hit.collider.transform.parent.name : hit.collider.gameObject.name;
             string stimulusType = ClassifyStimulus(stimulusName);
 
             float distance = Vector3.Distance(ray.origin, hit.point);
             float vergenceAngle = VergenceFunctions.CalculateVergenceAngle(interpupillaryDistance, distance);
-            float currentTime = Time.time - recordingStartTime;
 
             Vector3 combinedOrigin = Vector3.zero;
             Vector3 combinedDirection = Vector3.forward;
             EyeData.TryGetCombinedEyeWorldData(out combinedOrigin, out combinedDirection);
 
-            EyeDataSample eyeDataSample = new EyeDataSample(
-                currentTime,
-                vergenceAngle,
-                distance,
-                combinedOrigin,
-                combinedDirection
-            );
+            EyeDataSample eyeDataSample = new EyeDataSample(currentTime, vergenceAngle, distance, combinedOrigin, combinedDirection);
 
             if (currentEvent != null && currentEvent.stimulus == stimulusName)
             {
@@ -155,22 +150,38 @@ public class StatsSaved: MonoBehaviour
             else
             {
                 FinalizePreviousEvent();
-
-                currentEvent = new EyeVergenceEvent
-                {
-                    stimulus = stimulusName,
-                    type = stimulusType,
-                    wasShot = false,
-                    startTime = currentTime,
-                    endTime = currentTime,
-                    eyeDataSamples = new List<EyeDataSample> { eyeDataSample }
-                };
+                currentEvent = CreateNewEvent(stimulusName, stimulusType, currentTime, eyeDataSample);
             }
         }
         else
         {
-            FinalizePreviousEvent();
+            if (currentEvent != null && currentEvent.stimulus == "Sky")
+            {
+                EyeDataSample skySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction);
+                currentEvent.eyeDataSamples.Add(skySample);
+                currentEvent.endTime = currentTime;
+            }
+            else
+            {
+                FinalizePreviousEvent();
+
+                EyeDataSample initialSkySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction);
+                currentEvent = CreateNewEvent("Sky", "Sky", currentTime, initialSkySample);
+            }
         }
+    }
+
+    private EyeVergenceEvent CreateNewEvent(string name, string type, float time, EyeDataSample sample)
+    {
+        return new EyeVergenceEvent
+        {
+            stimulus = name,
+            type = type,
+            wasShot = false,
+            startTime = time,
+            endTime = time,
+            eyeDataSamples = new List<EyeDataSample> { sample }
+        };
     }
 
     private void FinalizePreviousEvent()
@@ -215,10 +226,28 @@ public class StatsSaved: MonoBehaviour
         if (name.StartsWith("ship-small") || name.StartsWith("ship-medium") || name.StartsWith("ship-large"))
             return "NoGo";
 
-        if (name.StartsWith("Water") || name.StartsWith("ship-large-health"))
+        if (name.StartsWith("MountainRigh") || name.StartsWith("MountainLeft") || name.StartsWith("MountainIsland")) 
+            return "Mountains";
+
+        if (name.StartsWith("Pier"))
+            return "Pier";
+
+        if (name.StartsWith("Island"))
+            return "Island";
+
+        if (name.StartsWith("Castle"))
+            return "Castle";
+
+        if (name.StartsWith("Background-Timer"))
+            return "Timer";
+
+        if (name.StartsWith("Water"))
+            return "Water";
+
+        if (name.StartsWith("ship-large-health"))
             return "Other";
 
-        return "Unknown";
+        return "TIMER";
     }
 
     public void MarkShot()

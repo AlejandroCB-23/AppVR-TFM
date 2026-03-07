@@ -1618,7 +1618,7 @@ MonoBehaviour:
   gameOverPanel: {fileID: 1580707676}
   delayBeforeShowingStats: 1
   bellClip: {fileID: 8300000, guid: 6fe334a62eaf4f44c913692b2d9c3f19, type: 3}
-  externalAppIP: 10.168.161.72
+  externalAppIP: 10.185.221.72
   externalAppPort: 5005
 --- !u!1001 &348648793
 PrefabInstance:
@@ -4111,7 +4111,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 56bd1177b3dd3f24e8eb4e13229540ce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serverIP: 10.168.161.72
+  serverIP: 10.185.221.72
   vergencePort: 5007
   captureInterval: 0.015
 --- !u!82 &782628381
@@ -4222,7 +4222,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 00f7557814dcc864ab005346a2f3b83e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serverIP: 10.168.161.72
+  serverIP: 10.185.221.72
   dataPort: 5006
   dataCollectionRate: 30
   targetCamera: {fileID: 0}

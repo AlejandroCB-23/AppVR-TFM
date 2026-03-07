@@ -15,6 +15,6 @@ EditorBuildSettings:
     path: Assets/Scenes/ModoAleatorio.unity
     guid: 870204b028ecd684db5b8623b3168767
   m_configObjects:
-    com.htc.upm.wave.xrsdk.xrsettings: {fileID: 11400000, guid: c778aeaa1cd0cb344a449c02c992ab43, type: 2}
+    com.htc.upm.wave.xrsdk.xrsettings: {fileID: 11400000, guid: d68956cba44596f4bb6d3bbc34170702, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: cdbdd7278fdc8504fb7a4fab0d8db030, type: 3}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 75d1c879b2a65894bb53d2275e04c30d, type: 2}
