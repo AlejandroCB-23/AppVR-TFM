@@ -124,6 +124,11 @@ public class StatsSaved: MonoBehaviour
         if (!VergenceFunctions.TryGetCombinedEyeRay(out Ray ray))
             return;
 
+        EyeManager.Instance.GetLeftEyePupilDiameter(out float leftPupil);
+        EyeManager.Instance.GetRightEyePupilDiameter(out float rightPupil);
+        EyeManager.Instance.GetLeftEyeOpenness(out float leftOpenness);
+        EyeManager.Instance.GetRightEyeOpenness(out float rightOpenness);
+
         bool hitCollider = Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity);
         float currentTime = Time.time - recordingStartTime;
 
@@ -140,7 +145,7 @@ public class StatsSaved: MonoBehaviour
             Vector3 combinedDirection = Vector3.forward;
             EyeData.TryGetCombinedEyeWorldData(out combinedOrigin, out combinedDirection);
 
-            EyeDataSample eyeDataSample = new EyeDataSample(currentTime, vergenceAngle, distance, combinedOrigin, combinedDirection);
+            EyeDataSample eyeDataSample = new EyeDataSample(currentTime, vergenceAngle, distance, combinedOrigin, combinedDirection, leftPupil, rightPupil, leftOpenness, rightOpenness);
 
             if (currentEvent != null && currentEvent.stimulus == stimulusName)
             {
@@ -157,7 +162,7 @@ public class StatsSaved: MonoBehaviour
         {
             if (currentEvent != null && currentEvent.stimulus == "Sky")
             {
-                EyeDataSample skySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction);
+                EyeDataSample skySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction, leftPupil, rightPupil, leftOpenness, rightOpenness);
                 currentEvent.eyeDataSamples.Add(skySample);
                 currentEvent.endTime = currentTime;
             }
@@ -165,14 +170,43 @@ public class StatsSaved: MonoBehaviour
             {
                 FinalizePreviousEvent();
 
-                EyeDataSample initialSkySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction);
+                EyeDataSample initialSkySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction, leftPupil, rightPupil, leftOpenness, rightOpenness);
                 currentEvent = CreateNewEvent("Sky", "Sky", currentTime, initialSkySample);
             }
         }
     }
 
+    private int CountShipsByType(string type)
+    {
+        int count = 0;
+        foreach (var ship in GameObject.FindGameObjectsWithTag("Ship"))
+        {
+            Ship shipScript = ship.GetComponent<Ship>();
+            if (shipScript != null && (shipScript.IsSinking() || shipScript.HasEscaped()))
+                continue;
+            if (ClassifyStimulus(ship.name) == type)
+                count++;
+        }
+        return count;
+    }
+
     private EyeVergenceEvent CreateNewEvent(string name, string type, float time, EyeDataSample sample)
     {
+        float aliveTime = -1f;
+        if (type == "Go" || type == "NoGo")
+        {
+            foreach (var shipObj in GameObject.FindGameObjectsWithTag("Ship"))
+            {
+                if (shipObj.name == name)
+                {
+                    Ship shipScript = shipObj.GetComponent<Ship>();
+                    if (shipScript != null)
+                        aliveTime = shipScript.GetAliveTime();
+                    break;
+                }
+            }
+        }
+
         return new EyeVergenceEvent
         {
             stimulus = name,
@@ -180,6 +214,15 @@ public class StatsSaved: MonoBehaviour
             wasShot = false,
             startTime = time,
             endTime = time,
+            shipAliveTime = aliveTime,
+            goShipsAlive = CountShipsByType("Go"),
+            noGoShipsAlive = CountShipsByType("NoGo"),
+            goShipsSpawned = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesSpawned() : 0,
+            noGoShipsSpawned = StatsTracker.Instance != null ? StatsTracker.Instance.GetFishingSpawned() : 0,
+            goShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEliminated() : 0,
+            noGoShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetFishingEliminated() : 0,
+            goShipsEscaped = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEscaped() : 0,
+            currentGoStreak = StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0,
             eyeDataSamples = new List<EyeDataSample> { sample }
         };
     }
@@ -197,6 +240,11 @@ public class StatsSaved: MonoBehaviour
         }
     }
 
+    // Each EyeDataSample is ~225 bytes as JSON. UDP max payload = 65507 bytes.
+    // At 66 samples/s, a fixation of >4s overflows a single packet.
+    // Chunk into 150-sample slices (~33KB each) to stay well under the limit.
+    private const int MaxSamplesPerPacket = 150;
+
     private void SendVergenceEvents()
     {
         if (completedEvents.Count == 0)
@@ -206,15 +254,51 @@ public class StatsSaved: MonoBehaviour
         {
             foreach (var evt in completedEvents)
             {
-                string jsonData = JsonUtility.ToJson(evt);
-                byte[] bytes = Encoding.UTF8.GetBytes(jsonData);
-                udpVergenceClient.Send(bytes, bytes.Length, vergenceEndPoint);
+                int totalSamples = evt.eyeDataSamples != null ? evt.eyeDataSamples.Count : 0;
+
+                if (totalSamples <= MaxSamplesPerPacket)
+                {
+                    string jsonData = JsonUtility.ToJson(evt);
+                    byte[] bytes = Encoding.UTF8.GetBytes(jsonData);
+                    udpVergenceClient.Send(bytes, bytes.Length, vergenceEndPoint);
+                }
+                else
+                {
+                    for (int startIdx = 0; startIdx < totalSamples; startIdx += MaxSamplesPerPacket)
+                    {
+                        int chunkSize = Mathf.Min(MaxSamplesPerPacket, totalSamples - startIdx);
+                        var chunkEvent = new EyeVergenceEvent
+                        {
+                            stimulus = evt.stimulus,
+                            type = evt.type,
+                            wasShot = evt.wasShot,
+                            startTime = evt.startTime,
+                            endTime = evt.endTime,
+                            shipAliveTime = evt.shipAliveTime,
+                            shipShotTime = evt.shipShotTime,
+                            goShipsAlive = evt.goShipsAlive,
+                            noGoShipsAlive = evt.noGoShipsAlive,
+                            goShipsSpawned = evt.goShipsSpawned,
+                            noGoShipsSpawned = evt.noGoShipsSpawned,
+                            goShipsEliminated = evt.goShipsEliminated,
+                            noGoShipsEliminated = evt.noGoShipsEliminated,
+                            goShipsEscaped = evt.goShipsEscaped,
+                            currentGoStreak = evt.currentGoStreak,
+                            eyeDataSamples = evt.eyeDataSamples.GetRange(startIdx, chunkSize)
+                        };
+
+                        string jsonChunk = JsonUtility.ToJson(chunkEvent);
+                        byte[] chunkBytes = Encoding.UTF8.GetBytes(jsonChunk);
+                        udpVergenceClient.Send(chunkBytes, chunkBytes.Length, vergenceEndPoint);
+                    }
+                }
             }
             completedEvents.Clear();
         }
         catch (System.Exception e)
         {
             Debug.LogError("Failed to send vergence data: " + e.Message);
+            completedEvents.Clear(); // Always clear to prevent blocking all future sends
         }
     }
 
@@ -238,7 +322,10 @@ public class StatsSaved: MonoBehaviour
         if (name.StartsWith("Castle"))
             return "Castle";
 
-        if (name.StartsWith("Background-Timer"))
+        if (name.StartsWith("Palms"))
+            return "Palms";
+
+        if (name.StartsWith("Background-Timer") || name.StartsWith("Timer") || name.StartsWith("Timer-Plane"))
             return "Timer";
 
         if (name.StartsWith("Water"))
@@ -247,14 +334,16 @@ public class StatsSaved: MonoBehaviour
         if (name.StartsWith("ship-large-health"))
             return "Other";
 
-        return "TIMER";
+        return "Other";
     }
 
-    public void MarkShot()
+    public void MarkShot(Ship ship = null)
     {
         if (currentEvent != null)
         {
             currentEvent.wasShot = true;
+            if (ship != null)
+                currentEvent.shipShotTime = ship.GetAliveTime();
         }
     }
 
@@ -360,6 +449,16 @@ public class EyeVergenceEvent
     public bool wasShot;
     public float startTime;
     public float endTime;
+    public float shipAliveTime = -1f;
+    public float shipShotTime = -1f;
+    public int goShipsAlive;
+    public int noGoShipsAlive;
+    public int goShipsSpawned;
+    public int noGoShipsSpawned;
+    public int goShipsEliminated;
+    public int noGoShipsEliminated;
+    public int goShipsEscaped;
+    public int currentGoStreak;
     public List<EyeDataSample> eyeDataSamples;
 }
 
@@ -372,13 +471,22 @@ public class EyeDataSample
     public Vector3 combinedEyeOrigin;
     public Vector3 combinedEyeDirection;
 
-    public EyeDataSample(float t, float v, float distance, Vector3 origin, Vector3 direction)
+    public float leftPupilDiameter;
+    public float rightPupilDiameter;
+    public float leftEyeOpenness;
+    public float rightEyeOpenness;
+
+    public EyeDataSample(float t, float v, float distance, Vector3 origin, Vector3 direction, float leftPupil, float rightPupil, float leftOpenness, float rightOpenness)
     {
         time = t;
         vergence = v;
         distanceToTarget = distance;
         combinedEyeOrigin = origin;
         combinedEyeDirection = direction;
+        leftPupilDiameter = leftPupil;
+        rightPupilDiameter = rightPupil;
+        leftEyeOpenness = leftOpenness;
+        rightEyeOpenness = rightOpenness;
     }
 }
 

@@ -6,6 +6,7 @@ public class Ship : MonoBehaviour
     private float speed;
     private Vector3 destination;
     private bool isSinking = false;
+    private bool hasEscaped = false;
     private bool isPirate;
     private float spawnTime;
     public bool isRedShip = false;
@@ -52,10 +53,16 @@ public class Ship : MonoBehaviour
 
     private void OnReachDestination()
     {
+        hasEscaped = true;
         if (isPirate && !isSinking && StatsTracker.Instance != null)
         {
             StatsTracker.Instance.RegisterPirateEscape();
         }
+    }
+
+    public bool HasEscaped()
+    {
+        return hasEscaped;
     }
 
     public void UpdateSpeed(float newSpeed)
@@ -86,6 +93,11 @@ public class Ship : MonoBehaviour
     public bool IsSinking()
     {
         return isSinking;
+    }
+
+    public float GetAliveTime()
+    {
+        return Time.timeSinceLevelLoad - spawnTime;
     }
 }
 #endif

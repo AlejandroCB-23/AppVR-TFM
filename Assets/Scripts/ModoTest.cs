@@ -103,6 +103,7 @@ public class ModoTest : MonoBehaviour
 
         Ship shipScript = ship.GetComponent<Ship>();
         shipScript.Initialize(spawnEvent.isPirate, spawnEvent.speed);
+        StatsTracker.Instance?.RegisterShipSpawn(spawnEvent.isPirate);
         shipScript.SetDestination(endPoint.position);
 
         float radius = GetIndicatorRadius(spawnEvent.sizeIndex, ship);

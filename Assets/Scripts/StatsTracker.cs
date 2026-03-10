@@ -8,6 +8,8 @@ public class StatsTracker : MonoBehaviour
 
     private int piratesEliminated = 0;
     private int fishingEliminated = 0;
+    private int piratesSpawned = 0;
+    private int fishingSpawned = 0;
     private int piratesEscaped = 0;
     private int livesLostToPirateEscapes = 0;
     private int currentPirateStreak = 0;
@@ -25,6 +27,12 @@ public class StatsTracker : MonoBehaviour
         Instance = this;
         gameStartTime = Time.timeSinceLevelLoad;
         ResetAll();
+    }
+
+    public void RegisterShipSpawn(bool isPirate)
+    {
+        if (isPirate) piratesSpawned++;
+        else fishingSpawned++;
     }
 
     public void RegisterShipElimination(bool isPirate, float spawnTime, bool isRed = false)
@@ -109,7 +117,10 @@ public class StatsTracker : MonoBehaviour
 
     public int GetPiratesEliminated() => piratesEliminated;
     public int GetFishingEliminated() => fishingEliminated;
+    public int GetPiratesSpawned() => piratesSpawned;
+    public int GetFishingSpawned() => fishingSpawned;
     public int GetBestPirateStreak() => bestPirateStreak;
+    public int GetCurrentPirateStreak() => currentPirateStreak;
     public int GetFishingEliminatedAleatorio() => fishingEliminatedAleatorio;
 
     public int GetPiratesEscaped() => piratesEscaped;
@@ -125,6 +136,8 @@ public class StatsTracker : MonoBehaviour
     {
         piratesEliminated = 0;
         fishingEliminated = 0;
+        piratesSpawned = 0;
+        fishingSpawned = 0;
         piratesEscaped = 0;
         livesLostToPirateEscapes = 0;
         currentPirateStreak = 0;

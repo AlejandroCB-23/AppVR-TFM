@@ -371,7 +371,8 @@ public class ModoAleatorio : MonoBehaviour
     void ConfigureShip(GameObject ship, int lane, bool isPirate, bool isRed)
     {
         Ship shipScript = ship.GetComponent<Ship>();
-        shipScript.Initialize(isPirate, shipSpeed); 
+        shipScript.Initialize(isPirate, shipSpeed);
+        StatsTracker.Instance?.RegisterShipSpawn(isPirate);
         shipScript.SetDestination(endPoints[lane].position);
         shipScript.isRedShip = isRed;
 
