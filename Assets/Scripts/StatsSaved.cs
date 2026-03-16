@@ -134,7 +134,6 @@ public class StatsSaved: MonoBehaviour
 
         if (hitCollider)
         {
-            // --- CASO 1: IMPACTO CON OBJETO ---
             string stimulusName = hit.collider.transform.parent != null ? hit.collider.transform.parent.name : hit.collider.gameObject.name;
             string stimulusType = ClassifyStimulus(stimulusName);
 
@@ -240,9 +239,6 @@ public class StatsSaved: MonoBehaviour
         }
     }
 
-    // Each EyeDataSample is ~225 bytes as JSON. UDP max payload = 65507 bytes.
-    // At 66 samples/s, a fixation of >4s overflows a single packet.
-    // Chunk into 150-sample slices (~33KB each) to stay well under the limit.
     private const int MaxSamplesPerPacket = 150;
 
     private void SendVergenceEvents()
@@ -298,7 +294,7 @@ public class StatsSaved: MonoBehaviour
         catch (System.Exception e)
         {
             Debug.LogError("Failed to send vergence data: " + e.Message);
-            completedEvents.Clear(); // Always clear to prevent blocking all future sends
+            completedEvents.Clear(); 
         }
     }
 
