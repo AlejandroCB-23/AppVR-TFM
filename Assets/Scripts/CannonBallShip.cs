@@ -29,6 +29,16 @@ public class CannonballShip : MonoBehaviour
             {
                 await StatsSaved.Instance.SaveFinalStatsAsync(); 
             }
+            else if (StatsSavedAWS.Instance != null)
+            {
+                await StatsSavedAWS.Instance.SaveFinalStatsAsync();
+            }
+
+            if (HeatMapDataAWS.Instance != null)
+            {
+                await HeatMapDataAWS.Instance.SavePendingDataAsync();
+            }
+
             await Task.Delay(400);
 
             SceneManager.LoadScene("Menu", LoadSceneMode.Single);

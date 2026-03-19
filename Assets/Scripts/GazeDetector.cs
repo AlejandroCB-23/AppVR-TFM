@@ -189,7 +189,14 @@ public class GazeDetector : MonoBehaviour
             cannonAudioSource.PlayOneShot(cannonShotClip);
         }
 
-        StatsSaved.Instance?.MarkShot(target);
+        if (StatsSaved.Instance != null)
+        {
+            StatsSaved.Instance.MarkShot(target);
+        }
+        else if (StatsSavedAWS.Instance != null)
+        {
+            StatsSavedAWS.Instance.MarkShot(target);
+        }
     }
 
 }

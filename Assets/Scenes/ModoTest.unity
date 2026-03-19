@@ -4281,6 +4281,8 @@ GameObject:
   - component: {fileID: 782628380}
   - component: {fileID: 782628381}
   - component: {fileID: 782628382}
+  - component: {fileID: 782628384}
+  - component: {fileID: 782628383}
   m_Layer: 0
   m_Name: EyeTracker
   m_TagString: Untagged
@@ -4342,7 +4344,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 782628375}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 56bd1177b3dd3f24e8eb4e13229540ce, type: 3}
   m_Name: 
@@ -4453,13 +4455,48 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 782628375}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 00f7557814dcc864ab005346a2f3b83e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   serverIP: 10.137.253.72
   dataPort: 5006
+  dataCollectionRate: 30
+  targetCamera: {fileID: 0}
+  fallbackGazeDistance: 10
+--- !u!114 &782628383
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 782628375}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbbb3cc249067924e9b3f4984e130880, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  uploadApiEndpoint: https://f2ytxnhuo0.execute-api.us-east-1.amazonaws.com
+  logUploadSuccess: 1
+  captureInterval: 0.015
+  saveDebugLogToFile: 1
+  debugLogFileName: StatsSavedAWS.log
+  mirrorLogsToConsole: 1
+--- !u!114 &782628384
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 782628375}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d55b84bfebcf3348b9c065e30b8ef93, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  uploadApiEndpoint: https://f2ytxnhuo0.execute-api.us-east-1.amazonaws.com
+  logUploadSuccess: 1
   dataCollectionRate: 30
   targetCamera: {fileID: 0}
   fallbackGazeDistance: 10
@@ -4956,7 +4993,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7471202952708050065, guid: be3d9716d14868d42a47f740f224b521, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 93
+      value: 96
       objectReference: {fileID: 0}
     - target: {fileID: 7471202952708050065, guid: be3d9716d14868d42a47f740f224b521, type: 3}
       propertyPath: m_LocalPosition.z
