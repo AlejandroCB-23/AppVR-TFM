@@ -25,16 +25,17 @@ public class CannonballShip : MonoBehaviour
 
         else if (hitObj.CompareTag("Boton"))
         {
-            if (StatsSaved.Instance != null)
-            {
-                await StatsSaved.Instance.SaveFinalStatsAsync(); 
-            }
-            else if (StatsSavedAWS.Instance != null)
+            // Prefer AWS collector when active; disabled local singletons may still exist.
+            if (StatsSavedAWS.Instance != null && StatsSavedAWS.Instance.isActiveAndEnabled)
             {
                 await StatsSavedAWS.Instance.SaveFinalStatsAsync();
             }
+            else if (StatsSaved.Instance != null && StatsSaved.Instance.isActiveAndEnabled)
+            {
+                await StatsSaved.Instance.SaveFinalStatsAsync(); 
+            }
 
-            if (HeatMapDataAWS.Instance != null)
+            if (HeatMapDataAWS.Instance != null && HeatMapDataAWS.Instance.isActiveAndEnabled)
             {
                 await HeatMapDataAWS.Instance.SavePendingDataAsync();
             }

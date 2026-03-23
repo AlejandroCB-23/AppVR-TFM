@@ -189,13 +189,14 @@ public class GazeDetector : MonoBehaviour
             cannonAudioSource.PlayOneShot(cannonShotClip);
         }
 
-        if (StatsSaved.Instance != null)
-        {
-            StatsSaved.Instance.MarkShot(target);
-        }
-        else if (StatsSavedAWS.Instance != null)
+        // Route shots only to the active collector; disabled components can still have a non-null singleton.
+        if (StatsSavedAWS.Instance != null && StatsSavedAWS.Instance.isActiveAndEnabled)
         {
             StatsSavedAWS.Instance.MarkShot(target);
+        }
+        else if (StatsSaved.Instance != null && StatsSaved.Instance.isActiveAndEnabled)
+        {
+            StatsSaved.Instance.MarkShot(target);
         }
     }
 
