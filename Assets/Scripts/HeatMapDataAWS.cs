@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 using Alex.OcularVergenceLibrary;
+using Wave.Essence.Eye;
 
 public class HeatMapDataAWS : MonoBehaviour
 {
@@ -22,12 +23,14 @@ public class HeatMapDataAWS : MonoBehaviour
 
     [Header("Gaze Settings")]
     public float fallbackGazeDistance = 10f;
+    public float noHitDistance = 1000000f;
 
-    private readonly List<HeatmapDataPoint> bufferedData = new List<HeatmapDataPoint>();
+    private readonly List<HeatmapDataPointAWS> bufferedData = new List<HeatmapDataPointAWS>();
 
     private float lastDataTime;
     private int frameCounter = 0;
     private float recordingStartTime = -1f;
+    private float sessionDurationSeconds = -1f;
     private bool uploadInProgress = false;
     private bool uploadedThisSession = false;
 
@@ -56,6 +59,7 @@ public class HeatMapDataAWS : MonoBehaviour
         if (HeatMapData.RecordingState.IsRecording && recordingStartTime < 0f)
         {
             recordingStartTime = Time.time;
+            sessionDurationSeconds = -1f;
             frameCounter = 0;
             uploadedThisSession = false;
             bufferedData.Clear();
@@ -69,6 +73,7 @@ public class HeatMapDataAWS : MonoBehaviour
 
         if (!HeatMapData.RecordingState.IsRecording && recordingStartTime >= 0f)
         {
+            sessionDurationSeconds = Mathf.Max(0f, Time.time - recordingStartTime);
             recordingStartTime = -1f;
 
             if (!uploadedThisSession && !uploadInProgress)
@@ -94,7 +99,7 @@ public class HeatMapDataAWS : MonoBehaviour
 
     private void CollectDataPoint()
     {
-        HeatmapDataPoint heatmapData = new HeatmapDataPoint
+        HeatmapDataPointAWS heatmapData = new HeatmapDataPointAWS
         {
             timestamp = Time.time - recordingStartTime,
             frameNumber = frameCounter++,
@@ -118,7 +123,7 @@ public class HeatMapDataAWS : MonoBehaviour
         bufferedData.Add(heatmapData);
     }
 
-    private bool CollectEyeTrackingData(ref HeatmapDataPoint data)
+    private bool CollectEyeTrackingData(ref HeatmapDataPointAWS data)
     {
         if (EyeData.TryGetWorldEyeData(out EyeTrackingData eyeData))
         {
@@ -129,6 +134,16 @@ public class HeatMapDataAWS : MonoBehaviour
             data.rightEyeDirection = eyeData.rightEyeDirection;
             data.combinedEyeOrigin = eyeData.combinedEyeOrigin;
             data.combinedEyeDirection = eyeData.combinedEyeDirection;
+
+            if (EyeManager.Instance != null)
+            {
+                EyeManager.Instance.GetLeftEyePupilDiameter(out data.leftPupilDiameter);
+                EyeManager.Instance.GetRightEyePupilDiameter(out data.rightPupilDiameter);
+                EyeManager.Instance.GetLeftEyeOpenness(out data.leftEyeOpenness);
+                EyeManager.Instance.GetRightEyeOpenness(out data.rightEyeOpenness);
+            }
+
+            PopulateVergenceAndDistance(ref data);
             return true;
         }
 
@@ -136,12 +151,51 @@ public class HeatMapDataAWS : MonoBehaviour
         return false;
     }
 
-    private void CollectGazeScreenPosition(ref HeatmapDataPoint data)
+    private void PopulateVergenceAndDistance(ref HeatmapDataPointAWS data)
+    {
+        Ray combinedRay = new Ray(data.combinedEyeOrigin, data.combinedEyeDirection);
+        bool hitCollider = Physics.Raycast(combinedRay, out RaycastHit hit, Mathf.Infinity);
+
+        data.isSkyTarget = !hitCollider;
+        data.distanceToTarget = hitCollider ? Vector3.Distance(combinedRay.origin, hit.point) : Mathf.Max(1f, noHitDistance);
+
+        if (hitCollider)
+        {
+            data.targetHitPoint = hit.point;
+        }
+        else
+        {
+            // Preserve gaze direction in world space even when no collider is hit.
+            data.targetHitPoint = combinedRay.origin + (combinedRay.direction * Mathf.Max(1f, noHitDistance));
+        }
+
+        if (data.isSkyTarget)
+        {
+            data.vergence = 0f;
+            return;
+        }
+
+        if (VergenceFunctions.TryGetInterpupillaryDistance(out float interpupillaryDistance))
+        {
+            data.vergence = VergenceFunctions.CalculateVergenceAngle(interpupillaryDistance, data.distanceToTarget);
+        }
+        else
+        {
+            data.vergence = 0f;
+        }
+    }
+
+    private void CollectGazeScreenPosition(ref HeatmapDataPointAWS data)
     {
         if (targetCamera == null)
         {
             return;
         }
+
+        Vector3 targetViewportPoint = targetCamera.WorldToViewportPoint(data.targetHitPoint);
+        data.targetLocal = new Vector2(targetViewportPoint.x, targetViewportPoint.y);
+        data.targetLocalDepth = targetViewportPoint.z;
+        data.isTargetLocalValid = targetViewportPoint.z > 0f;
 
         Vector3 gazeOrigin = data.combinedEyeOrigin;
         Vector3 gazeDirection = data.combinedEyeDirection;
@@ -191,6 +245,8 @@ public class HeatMapDataAWS : MonoBehaviour
             yield break;
         }
 
+        NormalizeBufferedTimeBounds();
+
         string fileName = BuildHeatmapFileName();
         string payload = BuildJsonlPayload();
 
@@ -209,6 +265,22 @@ public class HeatMapDataAWS : MonoBehaviour
 
         uploadInProgress = false;
         tcs?.SetResult(uploadSucceeded);
+    }
+
+    private void NormalizeBufferedTimeBounds()
+    {
+        if (bufferedData.Count == 0)
+        {
+            return;
+        }
+
+        bufferedData[0].timestamp = 0f;
+
+        if (sessionDurationSeconds >= 0f)
+        {
+            int lastIndex = bufferedData.Count - 1;
+            bufferedData[lastIndex].timestamp = Mathf.Max(bufferedData[0].timestamp, sessionDurationSeconds);
+        }
     }
 
     private string BuildHeatmapFileName()
@@ -297,6 +369,47 @@ public class HeatMapDataAWS : MonoBehaviour
     {
         public string upload_url;
         public string file_key;
+    }
+
+    [System.Serializable]
+    private class HeatmapDataPointAWS
+    {
+        public float timestamp;
+        public int frameNumber;
+        public float deltaTime;
+
+        public Vector3 headPosition;
+        public Quaternion headRotation;
+        public float cameraFOV;
+
+        public bool hasEyeTracking;
+        public Vector3 leftEyeOrigin;
+        public Vector3 leftEyeDirection;
+        public Vector3 rightEyeOrigin;
+        public Vector3 rightEyeDirection;
+        public Vector3 combinedEyeOrigin;
+        public Vector3 combinedEyeDirection;
+
+        public float vergence;
+        public float distanceToTarget;
+        public float leftPupilDiameter;
+        public float rightPupilDiameter;
+        public float leftEyeOpenness;
+        public float rightEyeOpenness;
+        public bool isSkyTarget;
+        public Vector3 targetHitPoint;
+        public Vector2 targetLocal;
+        public float targetLocalDepth;
+        public bool isTargetLocalValid;
+
+        public Vector3 gazeWorldPoint;
+        public Vector2 gazeScreenPosition;
+        public Vector2 gazeNormalizedPosition;
+        public float gazeScreenDepth;
+        public bool isGazeValid;
+
+        public int screenWidth;
+        public int screenHeight;
     }
 
     private void OnDestroy()

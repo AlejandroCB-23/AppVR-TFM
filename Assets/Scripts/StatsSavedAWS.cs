@@ -34,9 +34,10 @@ public class StatsSavedAWS : MonoBehaviour
     private string debugLogPath;
 
     private float lastCaptureTime = 0f;
-    private EyeVergenceEvent currentEvent = null;
-    private readonly List<EyeVergenceEvent> completedEvents = new List<EyeVergenceEvent>();
+    private EyeVergenceEventAWS currentEvent = null;
+    private readonly List<EyeVergenceEventAWS> completedEvents = new List<EyeVergenceEventAWS>();
     private float recordingStartTime = -1f;
+    private float sessionDurationSeconds = -1f;
     private int currentGameNumber;
     private bool finalizedThisSession = false;
     private bool saveInProgress = false;
@@ -101,12 +102,14 @@ public class StatsSavedAWS : MonoBehaviour
         if (RecordingState.IsRecording && recordingStartTime < 0f)
         {
             recordingStartTime = Time.time;
+            sessionDurationSeconds = -1f;
             finalizedThisSession = false;
             LogDebug($"Inicio de sesion de grabacion. gameNumber={currentGameNumber}");
         }
 
         if (!RecordingState.IsRecording && recordingStartTime >= 0f)
         {
+            sessionDurationSeconds = Mathf.Max(0f, Time.time - recordingStartTime);
             recordingStartTime = -1f;
             LogDebug("Fin de sesion detectado. Lanzando guardado final.");
             if (!finalizedThisSession && !saveInProgress)
@@ -198,6 +201,7 @@ public class StatsSavedAWS : MonoBehaviour
         saveInProgress = true;
 
         FinalizePreviousEvent();
+        NormalizeEventTimeBounds();
         LogDebug($"SaveFinalStatsInternal: eventos listos para subida={completedEvents.Count}");
 
         bool uploadOk = true;
@@ -266,24 +270,36 @@ public class StatsSavedAWS : MonoBehaviour
         tcs?.SetResult(true);
     }
 
-    private void CaptureEyeTrackingData()
+    private void NormalizeEventTimeBounds()
     {
-        if (!VergenceFunctions.TryGetInterpupillaryDistance(out float interpupillaryDistance))
+        if (completedEvents.Count == 0)
         {
-            LogDebug("CaptureEyeTrackingData: no interpupillaryDistance.");
             return;
         }
 
+        completedEvents[0].startTime = 0f;
+
+        if (completedEvents[0].endTime < completedEvents[0].startTime)
+        {
+            completedEvents[0].endTime = completedEvents[0].startTime;
+        }
+
+        if (sessionDurationSeconds >= 0f)
+        {
+            int lastIndex = completedEvents.Count - 1;
+            EyeVergenceEventAWS lastEvent = completedEvents[lastIndex];
+            lastEvent.endTime = Mathf.Max(lastEvent.startTime, sessionDurationSeconds);
+            completedEvents[lastIndex] = lastEvent;
+        }
+    }
+
+    private void CaptureEyeTrackingData()
+    {
         if (!VergenceFunctions.TryGetCombinedEyeRay(out Ray ray))
         {
             LogDebug("CaptureEyeTrackingData: no combined eye ray.");
             return;
         }
-
-        EyeManager.Instance.GetLeftEyePupilDiameter(out float leftPupil);
-        EyeManager.Instance.GetRightEyePupilDiameter(out float rightPupil);
-        EyeManager.Instance.GetLeftEyeOpenness(out float leftOpenness);
-        EyeManager.Instance.GetRightEyeOpenness(out float rightOpenness);
 
         bool hitCollider = Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity);
         float currentTime = Time.time - recordingStartTime;
@@ -293,48 +309,31 @@ public class StatsSavedAWS : MonoBehaviour
             string stimulusName = hit.collider.transform.parent != null ? hit.collider.transform.parent.name : hit.collider.gameObject.name;
             string stimulusType = ClassifyStimulus(stimulusName);
 
-            float distance = Vector3.Distance(ray.origin, hit.point);
-            float vergenceAngle = VergenceFunctions.CalculateVergenceAngle(interpupillaryDistance, distance);
-
-            Vector3 combinedOrigin = Vector3.zero;
-            Vector3 combinedDirection = Vector3.forward;
-            EyeData.TryGetCombinedEyeWorldData(out combinedOrigin, out combinedDirection);
-
-            EyeDataSample eyeDataSample = new EyeDataSample(currentTime, vergenceAngle, distance, combinedOrigin, combinedDirection,
-                leftPupil, rightPupil, leftOpenness, rightOpenness);
-
             if (currentEvent != null && currentEvent.stimulus == stimulusName)
             {
-                currentEvent.eyeDataSamples.Add(eyeDataSample);
                 currentEvent.endTime = currentTime;
             }
             else
             {
                 FinalizePreviousEvent();
-                currentEvent = CreateNewEvent(stimulusName, stimulusType, currentTime, eyeDataSample);
+                currentEvent = CreateNewEvent(stimulusName, stimulusType, currentTime);
             }
         }
         else
         {
             if (currentEvent != null && currentEvent.stimulus == "Sky")
             {
-                EyeDataSample skySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction,
-                    leftPupil, rightPupil, leftOpenness, rightOpenness);
-                currentEvent.eyeDataSamples.Add(skySample);
                 currentEvent.endTime = currentTime;
             }
             else
             {
                 FinalizePreviousEvent();
-
-                EyeDataSample initialSkySample = new EyeDataSample(currentTime, 0f, 1000f, ray.origin, ray.direction,
-                    leftPupil, rightPupil, leftOpenness, rightOpenness);
-                currentEvent = CreateNewEvent("Sky", "Sky", currentTime, initialSkySample);
+                currentEvent = CreateNewEvent("Sky", "Sky", currentTime);
             }
         }
     }
 
-    private EyeVergenceEvent CreateNewEvent(string name, string type, float time, EyeDataSample sample)
+    private EyeVergenceEventAWS CreateNewEvent(string name, string type, float time)
     {
         float aliveTime = -1f;
         if (type == "Go" || type == "NoGo")
@@ -353,7 +352,7 @@ public class StatsSavedAWS : MonoBehaviour
             }
         }
 
-        return new EyeVergenceEvent
+        return new EyeVergenceEventAWS
         {
             stimulus = name,
             type = type,
@@ -368,8 +367,7 @@ public class StatsSavedAWS : MonoBehaviour
             goShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEliminated() : 0,
             noGoShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetFishingEliminated() : 0,
             goShipsEscaped = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEscaped() : 0,
-            currentGoStreak = StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0,
-            eyeDataSamples = new List<EyeDataSample> { sample }
+            currentGoStreak = StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0
         };
     }
 
@@ -397,11 +395,8 @@ public class StatsSavedAWS : MonoBehaviour
     {
         if (currentEvent != null)
         {
-            if (currentEvent.eyeDataSamples != null && currentEvent.eyeDataSamples.Count > 0)
-            {
-                completedEvents.Add(currentEvent);
-                LogDebug($"Evento finalizado y agregado. stimulus={currentEvent.stimulus}, samples={currentEvent.eyeDataSamples.Count}, totalEventos={completedEvents.Count}");
-            }
+            completedEvents.Add(currentEvent);
+            LogDebug($"Evento finalizado y agregado. stimulus={currentEvent.stimulus}, totalEventos={completedEvents.Count}");
             currentEvent = null;
         }
     }
@@ -415,13 +410,8 @@ public class StatsSavedAWS : MonoBehaviour
     {
         StringBuilder sb = new StringBuilder(completedEvents.Count * 512);
 
-        foreach (EyeVergenceEvent evt in completedEvents)
+        foreach (EyeVergenceEventAWS evt in completedEvents)
         {
-            if (evt.eyeDataSamples != null && evt.eyeDataSamples.Count > 0)
-            {
-                evt.eyeDataSamples.Sort((a, b) => a.time.CompareTo(b.time));
-            }
-
             sb.Append(JsonUtility.ToJson(evt));
             sb.Append('\n');
         }
@@ -607,6 +597,26 @@ public class StatsSavedAWS : MonoBehaviour
     {
         public string upload_url;
         public string file_key;
+    }
+
+    [Serializable]
+    private class EyeVergenceEventAWS
+    {
+        public string stimulus;
+        public string type;
+        public bool wasShot;
+        public float startTime;
+        public float endTime;
+        public float shipAliveTime = -1f;
+        public float shipShotTime = -1f;
+        public int goShipsAlive;
+        public int noGoShipsAlive;
+        public int goShipsSpawned;
+        public int noGoShipsSpawned;
+        public int goShipsEliminated;
+        public int noGoShipsEliminated;
+        public int goShipsEscaped;
+        public int currentGoStreak;
     }
 }
 
