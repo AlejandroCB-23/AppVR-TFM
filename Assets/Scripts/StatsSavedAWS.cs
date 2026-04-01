@@ -184,43 +184,16 @@ public class StatsSavedAWS : MonoBehaviour
             pendingShotEventsByShip.Remove(ship.name);
         }
 
-        if (shotEvent == null)
+        if (shotEvent != null)
         {
-            LogDebug($"NotifyShipEliminated sin evento de disparo asociado. ship={ship.name}");
-            if (currentEvent != null)
-            {
-                UpdateEventCumulativeCountersFromLiveState(currentEvent);
-            }
-            UpdateLastCompletedEventCumulativeCounters();
-            return;
+            UpdateEventCumulativeCountersFromLiveState(shotEvent);
+            LogDebug($"Contadores sincronizados SOLO para el barco eliminado: {ship.name}");
         }
-
-        UpdateEventCumulativeCountersFromLiveState(shotEvent);
-        if (currentEvent != null && !object.ReferenceEquals(currentEvent, shotEvent))
-        {
-            UpdateEventCumulativeCountersFromLiveState(currentEvent);
-        }
-        UpdateLastCompletedEventCumulativeCounters();
-        LogDebug($"Contadores sincronizados tras Sink. ship={ship.name}, goEliminated={shotEvent.goShipsEliminated}, noGoEliminated={shotEvent.noGoShipsEliminated}");
     }
 
     public void NotifyPirateEscaped(Ship ship = null)
     {
-        if (currentEvent != null)
-        {
-            UpdateEventCountersFromLiveState(currentEvent);
-        }
-
-        UpdateLastCompletedEventCumulativeCounters();
-
-        if (ship != null)
-        {
-            LogDebug($"Contadores sincronizados tras Escape. ship={ship.name}, currentGoStreak={(StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0)}");
-        }
-        else
-        {
-            LogDebug("Contadores sincronizados tras Escape de pirata.");
-        }
+        LogDebug("Contadores sincronizados tras Escape de pirata.");
     }
 
     public Task SaveFinalStatsAsync()
