@@ -36,6 +36,7 @@ public class StatsSavedAWS : MonoBehaviour
     private float lastCaptureTime = 0f;
     private EyeVergenceEventAWS currentEvent = null;
     private readonly List<EyeVergenceEventAWS> completedEvents = new List<EyeVergenceEventAWS>();
+    private readonly Dictionary<string, EyeVergenceEventAWS> pendingShotEventsByShip = new Dictionary<string, EyeVergenceEventAWS>();
     private float recordingStartTime = -1f;
     private float sessionDurationSeconds = -1f;
     private int currentGameNumber;
@@ -155,6 +156,7 @@ public class StatsSavedAWS : MonoBehaviour
             if (ship != null)
             {
                 currentEvent.shipShotTime = ship.GetAliveTime();
+                pendingShotEventsByShip[ship.name] = currentEvent;
             }
 
             LogDebug($"MarkShot aplicado a evento actual. stimulus={currentEvent.stimulus}, shipShotTime={currentEvent.shipShotTime}");
@@ -162,6 +164,62 @@ public class StatsSavedAWS : MonoBehaviour
         else
         {
             LogDebug("MarkShot llamado sin currentEvent activo.");
+        }
+    }
+
+    public void NotifyShipEliminated(Ship ship)
+    {
+        if (ship == null)
+        {
+            return;
+        }
+
+        EyeVergenceEventAWS shotEvent = null;
+        if (!pendingShotEventsByShip.TryGetValue(ship.name, out shotEvent))
+        {
+            shotEvent = FindMostRecentShotEvent(ship.name);
+        }
+        else
+        {
+            pendingShotEventsByShip.Remove(ship.name);
+        }
+
+        if (shotEvent == null)
+        {
+            LogDebug($"NotifyShipEliminated sin evento de disparo asociado. ship={ship.name}");
+            if (currentEvent != null)
+            {
+                UpdateEventCumulativeCountersFromLiveState(currentEvent);
+            }
+            UpdateLastCompletedEventCumulativeCounters();
+            return;
+        }
+
+        UpdateEventCumulativeCountersFromLiveState(shotEvent);
+        if (currentEvent != null && !object.ReferenceEquals(currentEvent, shotEvent))
+        {
+            UpdateEventCumulativeCountersFromLiveState(currentEvent);
+        }
+        UpdateLastCompletedEventCumulativeCounters();
+        LogDebug($"Contadores sincronizados tras Sink. ship={ship.name}, goEliminated={shotEvent.goShipsEliminated}, noGoEliminated={shotEvent.noGoShipsEliminated}");
+    }
+
+    public void NotifyPirateEscaped(Ship ship = null)
+    {
+        if (currentEvent != null)
+        {
+            UpdateEventCountersFromLiveState(currentEvent);
+        }
+
+        UpdateLastCompletedEventCumulativeCounters();
+
+        if (ship != null)
+        {
+            LogDebug($"Contadores sincronizados tras Escape. ship={ship.name}, currentGoStreak={(StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0)}");
+        }
+        else
+        {
+            LogDebug("Contadores sincronizados tras Escape de pirata.");
         }
     }
 
@@ -202,6 +260,7 @@ public class StatsSavedAWS : MonoBehaviour
 
         FinalizePreviousEvent();
         NormalizeEventTimeBounds();
+        NormalizeCumulativeCounters();
         LogDebug($"SaveFinalStatsInternal: eventos listos para subida={completedEvents.Count}");
 
         bool uploadOk = true;
@@ -231,6 +290,7 @@ public class StatsSavedAWS : MonoBehaviour
         if (uploadOk)
         {
             completedEvents.Clear();
+            pendingShotEventsByShip.Clear();
         }
 
         try
@@ -290,6 +350,38 @@ public class StatsSavedAWS : MonoBehaviour
             EyeVergenceEventAWS lastEvent = completedEvents[lastIndex];
             lastEvent.endTime = Mathf.Max(lastEvent.startTime, sessionDurationSeconds);
             completedEvents[lastIndex] = lastEvent;
+        }
+    }
+
+    private void NormalizeCumulativeCounters()
+    {
+        if (completedEvents.Count == 0)
+        {
+            return;
+        }
+
+        int maxGoSpawned = 0;
+        int maxNoGoSpawned = 0;
+        int maxGoEliminated = 0;
+        int maxNoGoEliminated = 0;
+        int maxGoEscaped = 0;
+
+        for (int i = 0; i < completedEvents.Count; i++)
+        {
+            EyeVergenceEventAWS evt = completedEvents[i];
+
+            maxGoSpawned = Mathf.Max(maxGoSpawned, evt.goShipsSpawned);
+            maxNoGoSpawned = Mathf.Max(maxNoGoSpawned, evt.noGoShipsSpawned);
+            maxGoEliminated = Mathf.Max(maxGoEliminated, evt.goShipsEliminated);
+            maxNoGoEliminated = Mathf.Max(maxNoGoEliminated, evt.noGoShipsEliminated);
+            maxGoEscaped = Mathf.Max(maxGoEscaped, evt.goShipsEscaped);
+
+            evt.goShipsSpawned = maxGoSpawned;
+            evt.noGoShipsSpawned = maxNoGoSpawned;
+            evt.goShipsEliminated = maxGoEliminated;
+            evt.noGoShipsEliminated = maxNoGoEliminated;
+            evt.goShipsEscaped = maxGoEscaped;
+            completedEvents[i] = evt;
         }
     }
 
@@ -369,6 +461,70 @@ public class StatsSavedAWS : MonoBehaviour
             goShipsEscaped = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEscaped() : 0,
             currentGoStreak = StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0
         };
+    }
+
+    private void UpdateEventCountersFromLiveState(EyeVergenceEventAWS targetEvent)
+    {
+        if (targetEvent == null)
+        {
+            return;
+        }
+
+        targetEvent.goShipsAlive = CountShipsByType("Go");
+        targetEvent.noGoShipsAlive = CountShipsByType("NoGo");
+        targetEvent.goShipsSpawned = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesSpawned() : 0;
+        targetEvent.noGoShipsSpawned = StatsTracker.Instance != null ? StatsTracker.Instance.GetFishingSpawned() : 0;
+        targetEvent.goShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEliminated() : 0;
+        targetEvent.noGoShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetFishingEliminated() : 0;
+        targetEvent.goShipsEscaped = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEscaped() : 0;
+        targetEvent.currentGoStreak = StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0;
+    }
+
+    private void UpdateEventCumulativeCountersFromLiveState(EyeVergenceEventAWS targetEvent)
+    {
+        if (targetEvent == null)
+        {
+            return;
+        }
+
+        targetEvent.goShipsSpawned = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesSpawned() : 0;
+        targetEvent.noGoShipsSpawned = StatsTracker.Instance != null ? StatsTracker.Instance.GetFishingSpawned() : 0;
+        targetEvent.goShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEliminated() : 0;
+        targetEvent.noGoShipsEliminated = StatsTracker.Instance != null ? StatsTracker.Instance.GetFishingEliminated() : 0;
+        targetEvent.goShipsEscaped = StatsTracker.Instance != null ? StatsTracker.Instance.GetPiratesEscaped() : 0;
+        targetEvent.currentGoStreak = StatsTracker.Instance != null ? StatsTracker.Instance.GetCurrentPirateStreak() : 0;
+    }
+
+    private void UpdateLastCompletedEventCumulativeCounters()
+    {
+        if (completedEvents.Count == 0)
+        {
+            return;
+        }
+
+        int lastIndex = completedEvents.Count - 1;
+        EyeVergenceEventAWS lastCompleted = completedEvents[lastIndex];
+        UpdateEventCumulativeCountersFromLiveState(lastCompleted);
+        completedEvents[lastIndex] = lastCompleted;
+    }
+
+    private EyeVergenceEventAWS FindMostRecentShotEvent(string shipName)
+    {
+        if (currentEvent != null && currentEvent.wasShot && currentEvent.stimulus == shipName)
+        {
+            return currentEvent;
+        }
+
+        for (int i = completedEvents.Count - 1; i >= 0; i--)
+        {
+            EyeVergenceEventAWS evt = completedEvents[i];
+            if (evt.wasShot && evt.stimulus == shipName)
+            {
+                return evt;
+            }
+        }
+
+        return null;
     }
 
     private int CountShipsByType(string type)

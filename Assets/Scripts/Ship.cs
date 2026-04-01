@@ -57,6 +57,11 @@ public class Ship : MonoBehaviour
         if (isPirate && !isSinking && StatsTracker.Instance != null)
         {
             StatsTracker.Instance.RegisterPirateEscape();
+
+            if (StatsSavedAWS.Instance != null && StatsSavedAWS.Instance.isActiveAndEnabled)
+            {
+                StatsSavedAWS.Instance.NotifyPirateEscaped(this);
+            }
         }
     }
 
@@ -82,6 +87,11 @@ public class Ship : MonoBehaviour
         if (StatsTracker.Instance != null)
         {
             StatsTracker.Instance.RegisterShipElimination(isPirate, spawnTime, isRedShip);
+        }
+
+        if (StatsSavedAWS.Instance != null && StatsSavedAWS.Instance.isActiveAndEnabled)
+        {
+            StatsSavedAWS.Instance.NotifyShipEliminated(this);
         }
 
         if (isRedShip)
