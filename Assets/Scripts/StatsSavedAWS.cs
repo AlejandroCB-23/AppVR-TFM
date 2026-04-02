@@ -193,7 +193,13 @@ public class StatsSavedAWS : MonoBehaviour
 
     public void NotifyPirateEscaped(Ship ship = null)
     {
-        LogDebug("Contadores sincronizados tras Escape de pirata.");
+        if (currentEvent != null)
+        {
+            UpdateEventCountersFromLiveState(currentEvent);
+        }
+        UpdateLastCompletedEventCumulativeCounters();
+        
+        LogDebug("Contadores sincronizados tras Escape de pirata (Racha reseteada).");
     }
 
     public Task SaveFinalStatsAsync()
@@ -328,33 +334,64 @@ public class StatsSavedAWS : MonoBehaviour
 
     private void NormalizeCumulativeCounters()
     {
-        if (completedEvents.Count == 0)
+        if (completedEvents.Count == 0) return;
+
+        for (int i = 1; i < completedEvents.Count; i++)
         {
-            return;
+            EyeVergenceEventAWS prev    = completedEvents[i - 1];
+            EyeVergenceEventAWS current = completedEvents[i];
+
+            current.goShipsSpawned      = Mathf.Max(current.goShipsSpawned,      prev.goShipsSpawned);
+            current.noGoShipsSpawned    = Mathf.Max(current.noGoShipsSpawned,    prev.noGoShipsSpawned);
+            current.goShipsEliminated   = Mathf.Max(current.goShipsEliminated,   prev.goShipsEliminated);
+            current.noGoShipsEliminated = Mathf.Max(current.noGoShipsEliminated, prev.noGoShipsEliminated);
+            current.goShipsEscaped      = Mathf.Max(current.goShipsEscaped,      prev.goShipsEscaped);
+
+            completedEvents[i] = current;
         }
 
-        int maxGoSpawned = 0;
-        int maxNoGoSpawned = 0;
-        int maxGoEliminated = 0;
-        int maxNoGoEliminated = 0;
-        int maxGoEscaped = 0;
+        if (completedEvents.Count < 2) return;
 
-        for (int i = 0; i < completedEvents.Count; i++)
+        for (int i = 1; i < completedEvents.Count; i++)
         {
-            EyeVergenceEventAWS evt = completedEvents[i];
+            EyeVergenceEventAWS prev    = completedEvents[i - 1];
+            EyeVergenceEventAWS current = completedEvents[i];
 
-            maxGoSpawned = Mathf.Max(maxGoSpawned, evt.goShipsSpawned);
-            maxNoGoSpawned = Mathf.Max(maxNoGoSpawned, evt.noGoShipsSpawned);
-            maxGoEliminated = Mathf.Max(maxGoEliminated, evt.goShipsEliminated);
-            maxNoGoEliminated = Mathf.Max(maxNoGoEliminated, evt.noGoShipsEliminated);
-            maxGoEscaped = Mathf.Max(maxGoEscaped, evt.goShipsEscaped);
+            if (current.currentGoStreak > prev.currentGoStreak + 1)
+            {
+                current.currentGoStreak = prev.currentGoStreak;
+            }
 
-            evt.goShipsSpawned = maxGoSpawned;
-            evt.noGoShipsSpawned = maxNoGoSpawned;
-            evt.goShipsEliminated = maxGoEliminated;
-            evt.noGoShipsEliminated = maxNoGoEliminated;
-            evt.goShipsEscaped = maxGoEscaped;
-            completedEvents[i] = evt;
+            if (i < completedEvents.Count - 1)
+            {
+                EyeVergenceEventAWS next = completedEvents[i + 1];
+                if (current.currentGoStreak < prev.currentGoStreak &&
+                    next.currentGoStreak >= prev.currentGoStreak)
+                {
+                    current.currentGoStreak = prev.currentGoStreak;
+                }
+            }
+
+            if (current.stimulus != null && current.stimulus.Contains("cannon-ball") &&
+                current.currentGoStreak == prev.currentGoStreak - 1)
+            {
+                current.currentGoStreak = prev.currentGoStreak;
+            }
+
+            completedEvents[i] = current;
+        }
+
+        if (completedEvents.Count >= 2)
+        {
+            int lastIdx                      = completedEvents.Count - 1;
+            EyeVergenceEventAWS lastEvent    = completedEvents[lastIdx];
+            EyeVergenceEventAWS prevLast     = completedEvents[lastIdx - 1];
+
+            if (lastEvent.currentGoStreak == prevLast.currentGoStreak - 1)
+            {
+                lastEvent.currentGoStreak    = prevLast.currentGoStreak;
+                completedEvents[lastIdx]     = lastEvent;
+            }
         }
     }
 
