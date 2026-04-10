@@ -417,7 +417,7 @@ public class StatsSavedAWS : MonoBehaviour
             }
             else
             {
-                FinalizePreviousEvent();
+                FinalizePreviousEvent(currentTime);
                 currentEvent = CreateNewEvent(stimulusName, stimulusType, currentTime);
             }
         }
@@ -429,7 +429,7 @@ public class StatsSavedAWS : MonoBehaviour
             }
             else
             {
-                FinalizePreviousEvent();
+                FinalizePreviousEvent(currentTime);
                 currentEvent = CreateNewEvent("Sky", "Sky", currentTime);
             }
         }
@@ -557,10 +557,15 @@ public class StatsSavedAWS : MonoBehaviour
         return count;
     }
 
-    private void FinalizePreviousEvent()
+    private void FinalizePreviousEvent(float? forcedEndTime = null)
     {
         if (currentEvent != null)
         {
+            if (forcedEndTime.HasValue)
+            {
+                currentEvent.endTime = Mathf.Max(currentEvent.startTime, forcedEndTime.Value);
+            }
+
             completedEvents.Add(currentEvent);
             LogDebug($"Evento finalizado y agregado. stimulus={currentEvent.stimulus}, totalEventos={completedEvents.Count}");
             currentEvent = null;
