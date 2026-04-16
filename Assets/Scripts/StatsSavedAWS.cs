@@ -39,7 +39,6 @@ public class StatsSavedAWS : MonoBehaviour
     private readonly Dictionary<string, EyeVergenceEventAWS> pendingShotEventsByShip = new Dictionary<string, EyeVergenceEventAWS>();
     private float recordingStartTime = -1f;
     private float sessionDurationSeconds = -1f;
-    private int currentGameNumber;
     private bool finalizedThisSession = false;
     private bool saveInProgress = false;
 
@@ -75,13 +74,6 @@ public class StatsSavedAWS : MonoBehaviour
     private void InitializeStorage()
     {
         string dataPath = Application.persistentDataPath;
-        if (!PlayerPrefs.HasKey("GameNumber"))
-        {
-            PlayerPrefs.SetInt("GameNumber", 1);
-            PlayerPrefs.Save();
-        }
-
-        currentGameNumber = PlayerPrefs.GetInt("GameNumber", 1);
         statsPath = Path.Combine(dataPath, "Stats.json");
         debugLogPath = Path.Combine(dataPath, debugLogFileName);
 
@@ -105,7 +97,12 @@ public class StatsSavedAWS : MonoBehaviour
             recordingStartTime = Time.time;
             sessionDurationSeconds = -1f;
             finalizedThisSession = false;
-            LogDebug($"Inicio de sesion de grabacion. gameNumber={currentGameNumber}");
+            AwsGameSessionId.ResetSession();
+            if (AwsGameSessionId.IsEnabledForCurrentScene())
+            {
+                StartCoroutine(AwsGameSessionId.EnsureGameIdCoroutine(uploadApiEndpoint, null, LogDebug));
+            }
+            LogDebug("Inicio de sesion de grabacion.");
         }
 
         if (!RecordingState.IsRecording && recordingStartTime >= 0f)
@@ -243,20 +240,40 @@ public class StatsSavedAWS : MonoBehaviour
         LogDebug($"SaveFinalStatsInternal: eventos listos para subida={completedEvents.Count}");
 
         bool uploadOk = true;
-        if (completedEvents.Count > 0)
+        if (!AwsGameSessionId.IsEnabledForCurrentScene())
         {
-            string fileName = BuildVergenceFileName(currentGameNumber);
+            LogDebug("Escena no test: se omite subida AWS de estimulos y game_id.");
+        }
+        else if (completedEvents.Count > 0)
+        {
+            int sessionGameId = AwsGameSessionId.CurrentGameId;
+            if (sessionGameId <= 0)
+            {
+                yield return StartCoroutine(AwsGameSessionId.EnsureGameIdCoroutine(uploadApiEndpoint, null, LogDebug));
+                sessionGameId = AwsGameSessionId.CurrentGameId;
+            }
+
+            if (sessionGameId <= 0)
+            {
+                LogDebug("No se pudo resolver game_id. No se suben estimulos en esta sesion.");
+                uploadOk = false;
+            }
+
+            string fileName = BuildVergenceFileName();
             string payload = BuildVergenceJsonlPayload();
             LogDebug($"Preparando upload de {fileName}. bytes={Encoding.UTF8.GetByteCount(payload)}");
 
             bool callbackResult = false;
             bool callbackInvoked = false;
 
-            yield return StartCoroutine(UploadJsonFileCoroutine(fileName, payload, success =>
+            if (uploadOk)
             {
-                callbackResult = success;
-                callbackInvoked = true;
-            }));
+                yield return StartCoroutine(UploadJsonFileCoroutine(fileName, payload, sessionGameId, success =>
+                {
+                    callbackResult = success;
+                    callbackInvoked = true;
+                }));
+            }
 
             uploadOk = callbackInvoked && callbackResult;
             LogDebug($"Resultado subida estimulos. callbackInvoked={callbackInvoked}, callbackResult={callbackResult}");
@@ -279,7 +296,7 @@ public class StatsSavedAWS : MonoBehaviour
             {
                 GameStats gameStats = new GameStats
                 {
-                    gameNumber = currentGameNumber,
+                    gameNumber = Mathf.Max(0, AwsGameSessionId.CurrentGameId),
                     piratesEliminated = stats.GetPiratesEliminated(),
                     fishingEliminated = stats.GetFishingEliminated(),
                     bestPirateStreak = stats.GetBestPirateStreak(),
@@ -291,10 +308,6 @@ public class StatsSavedAWS : MonoBehaviour
 
                 AppendStats(gameStats);
             }
-
-            currentGameNumber++;
-            PlayerPrefs.SetInt("GameNumber", currentGameNumber);
-            PlayerPrefs.Save();
         }
         catch (Exception e)
         {
@@ -304,7 +317,7 @@ public class StatsSavedAWS : MonoBehaviour
 
         finalizedThisSession = true;
         saveInProgress = false;
-        LogDebug($"SaveFinalStatsInternal finalizada. uploadOk={uploadOk}, nextGameNumber={currentGameNumber}");
+        LogDebug($"SaveFinalStatsInternal finalizada. uploadOk={uploadOk}, game_id={AwsGameSessionId.CurrentGameId}");
 
         tcs?.SetResult(true);
     }
@@ -572,7 +585,7 @@ public class StatsSavedAWS : MonoBehaviour
         }
     }
 
-    private string BuildVergenceFileName(int gameNumber)
+    private string BuildVergenceFileName()
     {
         return "Estimulos.jsonl";
     }
@@ -590,12 +603,12 @@ public class StatsSavedAWS : MonoBehaviour
         return sb.ToString();
     }
 
-    private IEnumerator UploadJsonFileCoroutine(string fileName, string content, Action<bool> onCompleted)
+    private IEnumerator UploadJsonFileCoroutine(string fileName, string content, int gameId, Action<bool> onCompleted)
     {
         string uploadUrlEndpoint = uploadApiEndpoint.TrimEnd('/') + "/upload-url";
         LogDebug($"Solicitando URL firmada en {uploadUrlEndpoint} para file={fileName}");
 
-        UploadUrlRequest requestBody = new UploadUrlRequest { file_name = fileName };
+        UploadUrlRequest requestBody = new UploadUrlRequest { file_name = fileName, game_id = gameId };
         byte[] requestBytes = Encoding.UTF8.GetBytes(JsonUtility.ToJson(requestBody));
 
         using (UnityWebRequest presignRequest = new UnityWebRequest(uploadUrlEndpoint, UnityWebRequest.kHttpVerbPOST))
@@ -761,6 +774,7 @@ public class StatsSavedAWS : MonoBehaviour
     private class UploadUrlRequest
     {
         public string file_name;
+        public int game_id;
     }
 
     [Serializable]
@@ -768,6 +782,7 @@ public class StatsSavedAWS : MonoBehaviour
     {
         public string upload_url;
         public string file_key;
+        public int game_id;
     }
 
     [Serializable]

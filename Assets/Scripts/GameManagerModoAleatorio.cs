@@ -87,6 +87,7 @@ public class GameManagerModoAleatorio : MonoBehaviour
                 StatsTracker.Instance.GetPiratesEliminated(),
                 StatsTracker.Instance.GetFishingEliminated(),
                 StatsTracker.Instance.GetBestPirateStreak(),
+                AwsGameSessionId.CurrentGameId,
                 StatsTracker.Instance.GetMaxTimeWithoutFishing(),
                 StatsTracker.Instance.GetShortestTimeToSinkPirate(),
                 StatsTracker.Instance.GetAverageTimeToSinkPirate(),

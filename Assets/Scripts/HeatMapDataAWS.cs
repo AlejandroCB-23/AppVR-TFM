@@ -218,6 +218,14 @@ public class HeatMapDataAWS : MonoBehaviour
 
     private IEnumerator SavePendingDataCoroutine(TaskCompletionSource<bool> tcs)
     {
+        if (!AwsGameSessionId.IsEnabledForCurrentScene())
+        {
+            uploadInProgress = false;
+            uploadedThisSession = true;
+            tcs?.SetResult(true);
+            yield break;
+        }
+
         if (uploadInProgress)
         {
             while (uploadInProgress)
@@ -247,12 +255,26 @@ public class HeatMapDataAWS : MonoBehaviour
 
         NormalizeBufferedTimeBounds();
 
+        int sessionGameId = AwsGameSessionId.CurrentGameId;
+        if (sessionGameId <= 0)
+        {
+            yield return StartCoroutine(AwsGameSessionId.EnsureGameIdCoroutine(uploadApiEndpoint));
+            sessionGameId = AwsGameSessionId.CurrentGameId;
+        }
+
+        if (sessionGameId <= 0)
+        {
+            uploadInProgress = false;
+            tcs?.SetResult(false);
+            yield break;
+        }
+
         string fileName = BuildHeatmapFileName();
         string payload = BuildJsonlPayload();
 
         bool uploadSucceeded = false;
 
-        yield return StartCoroutine(UploadJsonFileCoroutine(fileName, payload, success =>
+        yield return StartCoroutine(UploadJsonFileCoroutine(fileName, payload, sessionGameId, success =>
         {
             uploadSucceeded = success;
         }));
@@ -301,11 +323,11 @@ public class HeatMapDataAWS : MonoBehaviour
         return sb.ToString();
     }
 
-    private IEnumerator UploadJsonFileCoroutine(string fileName, string content, System.Action<bool> onCompleted)
+    private IEnumerator UploadJsonFileCoroutine(string fileName, string content, int gameId, System.Action<bool> onCompleted)
     {
         string uploadUrlEndpoint = uploadApiEndpoint.TrimEnd('/') + "/upload-url";
 
-        UploadUrlRequest requestBody = new UploadUrlRequest { file_name = fileName };
+        UploadUrlRequest requestBody = new UploadUrlRequest { file_name = fileName, game_id = gameId };
         byte[] requestBytes = Encoding.UTF8.GetBytes(JsonUtility.ToJson(requestBody));
 
         using (UnityWebRequest presignRequest = new UnityWebRequest(uploadUrlEndpoint, UnityWebRequest.kHttpVerbPOST))
@@ -362,6 +384,7 @@ public class HeatMapDataAWS : MonoBehaviour
     private class UploadUrlRequest
     {
         public string file_name;
+        public int game_id;
     }
 
     [System.Serializable]
@@ -369,6 +392,7 @@ public class HeatMapDataAWS : MonoBehaviour
     {
         public string upload_url;
         public string file_key;
+        public int game_id;
     }
 
     [System.Serializable]
