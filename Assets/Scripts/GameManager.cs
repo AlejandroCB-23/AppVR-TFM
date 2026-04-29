@@ -7,7 +7,7 @@ using System.Text;
 
 public class GameManager : MonoBehaviour
 {
-    public float gameDuration = 120f;
+    public float gameDuration = 300f;
     private float timer;
     private bool gameEnded = false;
 
